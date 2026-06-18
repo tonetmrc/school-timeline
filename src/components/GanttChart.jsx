@@ -34,7 +34,7 @@ function getPhaseSegments(sched, needsTranslation) {
   return segs
 }
 
-export default function GanttChart({ schools, activePhases = [], onEditSchool, onDeleteSchool, onUpdateDeStart, onReorderSchools }) {
+export default function GanttChart({ schools, activePhases = [], onEditSchool, onDeleteSchool, onUpdateDeStart, onReorderSchools, onToggleCompleted }) {
   const [tooltip, setTooltip]         = useState(null)
   const [hoveredRow, setHoveredRow]   = useState(null)
   const [dragState, setDragState]     = useState(null)
@@ -373,53 +373,90 @@ export default function GanttChart({ schools, activePhases = [], onEditSchool, o
                     const w = (differenceInCalendarDays(seg.end, seg.start) + 1) * CELL_W - 1
                     const isLive = seg.key === 'live'
                     const isDE   = seg.key === 'de'
+                    const isTR   = seg.key === 'tr'
                     const phaseInfo = PHASES.find(p => p.key === seg.key)
                     const showLabel = w >= 28
-                    const isCompleted = !isLive && isPhaseCompleted(sc, seg.key)
 
-                    // Phase filter: dim non-selected phases, hide if filter active and not selected
+                    // Completion states
+                    const isCompleted     = !isLive && isPhaseCompleted(sc, seg.key)
+                    const liveDone        = isLive && isPhaseCompleted(sc, 'live_done')
+                    const onenoteImported = isDE   && isPhaseCompleted(sc, 'onenote_imported')
+                    const excelDone       = isTR   && isPhaseCompleted(sc, 'translation_excel_done')
+
+                    // Phase filter
                     const phaseFiltered = activePhases.length > 0
                     const isHighlighted = activePhases.includes(seg.key)
                     const phaseOpacity  = phaseFiltered ? (isHighlighted ? 1 : 0) : 1
 
-                    const dragOpacity = (isBeingDraggedDE && !isDE) || isBeingDraggedRow ? 0.5 : 1
-                    const completedOpacity = isCompleted ? 0.45 : 1
+                    const dragOpacity      = (isBeingDraggedDE && !isDE) || isBeingDraggedRow ? 0.5 : 1
+                    const completedOpacity = (isCompleted || liveDone) ? 0.4 : 1
                     const opacity = Math.min(phaseOpacity, dragOpacity, completedOpacity)
+
+                    // Bar color: live_done → gray
+                    const barColor = liveDone ? '#3a4255'
+                      : isLive && liveConflict ? '#ef4444'
+                      : seg.color
+
+                    // Click handler: toggle completion
+                    function handleBarClick(e) {
+                      if (isDE || !onToggleCompleted) return
+                      e.stopPropagation()
+                      setTooltip(null)
+                      if (isLive) {
+                        onToggleCompleted(sc.id, 'live_done')
+                      } else {
+                        onToggleCompleted(sc.id, seg.key)
+                      }
+                    }
 
                     return (
                       <div key={si}
-                        title={isDE ? 'Drag to reschedule' : isCompleted ? 'Completed' : undefined}
+                        title={
+                          isDE ? 'Drag to reschedule' :
+                          isLive ? (liveDone ? 'Go live done ✓ — click to undo' : 'Click to mark go live as done') :
+                          isCompleted ? `${phaseInfo?.label} completed ✓ — click to undo` :
+                          `Click to mark ${phaseInfo?.label} as done`
+                        }
                         style={{
                           position: 'absolute',
                           left: x,
                           top: (ROW_H - (isLive ? 26 : 22)) / 2,
                           width: Math.max(w, isLive ? 26 : 4),
                           height: isLive ? 26 : 22,
-                          background: isLive && liveConflict ? '#ef4444' : seg.color,
+                          background: barColor,
                           borderRadius: isLive ? 13 : 4,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           fontSize: 9, fontWeight: 600, color: phaseInfo?.textColor || '#000',
                           cursor: isDE ? 'ew-resize' : 'pointer',
                           overflow: 'visible',
                           opacity,
-                          boxShadow: isLive && phaseOpacity > 0.5
-                            ? `0 0 0 2px rgba(0,0,0,0.5), 0 0 12px ${seg.color}55`
-                            : isDE && isBeingDraggedDE
-                              ? `0 0 0 2px rgba(79,142,247,0.6), 0 0 10px rgba(79,142,247,0.4)`
-                              : phaseFiltered && isHighlighted
-                                ? `0 0 0 1.5px ${seg.color}99, 0 0 8px ${seg.color}44`
-                                : 'none',
-                          border: isLive && liveConflict ? '2px solid #fca5a5'
+                          boxShadow: liveDone ? 'none'
+                            : isLive && phaseOpacity > 0.5
+                              ? `0 0 0 2px rgba(0,0,0,0.5), 0 0 12px ${seg.color}55`
+                              : isDE && isBeingDraggedDE
+                                ? `0 0 0 2px rgba(79,142,247,0.6), 0 0 10px rgba(79,142,247,0.4)`
+                                : phaseFiltered && isHighlighted
+                                  ? `0 0 0 1.5px ${seg.color}99, 0 0 8px ${seg.color}44`
+                                  : 'none',
+                          border: isLive && liveConflict && !liveDone ? '2px solid #fca5a5'
                             : isDE ? '1px solid rgba(255,255,255,0.15)'
-                            : isCompleted ? '1px solid rgba(62,207,142,0.6)' : 'none',
+                            : (isCompleted || liveDone) ? '1px solid rgba(62,207,142,0.6)' : 'none',
                           transition: isDragging ? 'none' : 'left 0.15s, width 0.15s, opacity 0.2s',
                         }}
                         onMouseDown={isDE ? (e) => handleDEMouseDown(e, sc) : undefined}
+                        onClick={!isDE ? handleBarClick : undefined}
                         onMouseEnter={!isDE ? e => setTooltip({ phase: seg.key, school: sc, sched: displaySched, x: e.clientX, y: e.clientY }) : undefined}
                         onMouseLeave={!isDE ? () => setTooltip(null) : undefined}
                       >
-                        {showLabel && (isLive ? (sc.manual_live_date ? '📅' : '🚀') : isDE ? '⠿ DE' : phaseInfo?.label)}
-                        {isCompleted && (
+                        {/* Bar label */}
+                        {showLabel && (
+                          isLive
+                            ? (liveDone ? '✓' : sc.manual_live_date ? '📅' : '🚀')
+                            : isDE ? '⠿ DE' : phaseInfo?.label
+                        )}
+
+                        {/* ✓ completion badge (non-live phases) */}
+                        {(isCompleted) && (
                           <div style={{
                             position: 'absolute', top: -7, right: -7,
                             width: 16, height: 16, borderRadius: '50%',
@@ -427,6 +464,48 @@ export default function GanttChart({ schools, activePhases = [], onEditSchool, o
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 9, color: '#052e1b', fontWeight: 700, lineHeight: 1,
                           }}>✓</div>
+                        )}
+
+                        {/* OneNote badge on DE bar */}
+                        {isDE && (
+                          <div
+                            title={onenoteImported ? 'OneNote importato ✓ — click per annullare' : 'Click per segnare OneNote come importato'}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (onToggleCompleted) onToggleCompleted(sc.id, 'onenote_imported')
+                            }}
+                            style={{
+                              position: 'absolute', top: -8, left: -2,
+                              width: 18, height: 18, borderRadius: 4,
+                              background: onenoteImported ? '#7c3aed' : 'rgba(0,0,0,0.5)',
+                              border: `1.5px solid ${onenoteImported ? '#a78bfa' : 'rgba(168,139,250,0.3)'}`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 9, color: onenoteImported ? '#fff' : 'rgba(168,139,250,0.5)',
+                              fontWeight: 700, cursor: 'pointer', lineHeight: 1,
+                              transition: 'all 0.15s',
+                            }}
+                          >ON</div>
+                        )}
+
+                        {/* Excel translation badge on TR bar */}
+                        {isTR && (
+                          <div
+                            title={excelDone ? 'Excel traduzione fatto ✓ — click per annullare' : 'Click per segnare Excel traduzione come fatto'}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              if (onToggleCompleted) onToggleCompleted(sc.id, 'translation_excel_done')
+                            }}
+                            style={{
+                              position: 'absolute', top: -8, left: -2,
+                              width: 18, height: 18, borderRadius: 4,
+                              background: excelDone ? '#166534' : 'rgba(0,0,0,0.5)',
+                              border: `1.5px solid ${excelDone ? '#22c55e' : 'rgba(34,197,94,0.3)'}`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontSize: 8, color: excelDone ? '#fff' : 'rgba(34,197,94,0.5)',
+                              fontWeight: 700, cursor: 'pointer', lineHeight: 1,
+                              transition: 'all 0.15s',
+                            }}
+                          >XL</div>
                         )}
                       </div>
                     )
