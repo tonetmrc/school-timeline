@@ -49,6 +49,14 @@ export default function App() {
     setModal(null)
   }
 
+  async function handleToggleCompleted(schoolId, phaseKey) {
+    const school = schools.find(s => s.id === schoolId)
+    if (!school) return
+    const current = school.completed_phases || {}
+    const updated = { ...current, [phaseKey]: !current[phaseKey] }
+    await updateSchool(schoolId, { completed_phases: updated })
+  }
+
   function handleReorder(fromIndex, toIndex) {
     const ids = filtered.map(s => s.id)
     const [moved] = ids.splice(fromIndex, 1)
@@ -142,6 +150,7 @@ export default function App() {
                 onDeleteSchool={deleteSchool}
                 onUpdateDeStart={(id, newDate) => updateSchool(id, { de_start_date: newDate })}
                 onReorderSchools={handleReorder}
+                onToggleCompleted={handleToggleCompleted}
               />
             ) : (
               <SchoolList
