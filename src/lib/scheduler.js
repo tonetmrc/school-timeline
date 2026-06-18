@@ -218,13 +218,16 @@ export function getDurations(school, index) {
 
 // Phases that can be marked as completed, in pipeline order.
 export const COMPLETABLE_PHASES = [
-  { key: 'de',      label: 'Data Entry' },
-  { key: 'qa',      label: 'QA Jakala' },
-  { key: 'review',  label: 'School review' },
-  { key: 'sr',      label: 'Staging review' },
-  { key: 'fv',      label: 'Final validation' },
-  { key: 'so',      label: 'Sign-off' },
-  { key: 'check',   label: 'Tech check' },
+  { key: 'onenote_imported',      label: 'OneNote imported',      preDe: true  },
+  { key: 'de',                    label: 'Data Entry'                           },
+  { key: 'qa',                    label: 'QA Jakala'                            },
+  { key: 'review',                label: 'School review'                        },
+  { key: 'sr',                    label: 'Staging review'                       },
+  { key: 'fv',                    label: 'Final validation'                     },
+  { key: 'so',                    label: 'Sign-off'                             },
+  { key: 'translation_excel_done',label: 'Translation Excel',     translationOnly: true },
+  { key: 'check',                 label: 'Tech check'                           },
+  { key: 'live_done',             label: 'Go live',               isLive: true  },
 ]
 
 export function isPhaseCompleted(school, phaseKey) {
